@@ -516,8 +516,9 @@ Run the commands above for the current result; the suite also includes regressio
   be detected. PostgreSQL audit appends use a transaction-scoped advisory lock;
   the SQLite test suite does not establish multi-process concurrency guarantees.
 - Refresh-session lookup locks the row in PostgreSQL to serialize use of the same
-  token. Several operations still span separate commits, so crash recovery and races
-  with password changes or logout-all need further transaction hardening.
+  token. Authentication and vault writes commit together with their audit entry;
+  a failure before that commit rolls the operation back. Cross-request races with
+  password changes or logout-all still need PostgreSQL concurrency testing and hardening.
 - Single-session logout revokes the refresh token; its access token remains usable
   until expiry. Logout-all and password changes also revoke existing access tokens.
 

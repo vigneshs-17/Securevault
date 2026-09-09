@@ -45,4 +45,4 @@ def verify_audit_hash(
         previous_hash=previous_hash,
     )
 
-    return hmac.compare_digest(expected_hash, stored_hash)
+    return hmac.compare_digest(expected_hash.encode("ascii"), stored_hash.encode("utf-8"))

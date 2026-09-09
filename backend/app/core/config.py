@@ -106,15 +106,18 @@ class Settings(BaseSettings):
             "password",
             "development",
             "test",
+            "replace_with_a_strong_random_secret_at_least_32_chars",
         }
 
-        if self.jwt_secret_key.strip().lower() in weak_values:
+        if (self.jwt_secret_key.strip().lower() in weak_values
+                or len(self.jwt_secret_key.strip()) < 32):
             raise ValueError(
                 "jwt_secret_key must not use a placeholder "
                 "value in production"
             )
 
-        if self.audit_integrity_key.strip().lower() in weak_values:
+        if (self.audit_integrity_key.strip().lower() in weak_values
+                or len(self.audit_integrity_key.strip()) < 32):
             raise ValueError(
                 "audit_integrity_key must not use a placeholder "
                 "value in production"

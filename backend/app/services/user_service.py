@@ -2,6 +2,7 @@ import re
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
@@ -63,7 +64,16 @@ def create_user(
     )
 
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if get_user_by_email(db, user_data.email) is None:
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already registered",
+        )
     db.refresh(user)
 
     return user
@@ -87,4 +97,4 @@ def change_user_password(
 
     user.hashed_password = hash_password(new_password)
 
-    db.commit()
+    db.flush()

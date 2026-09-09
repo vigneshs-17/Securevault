@@ -18,7 +18,7 @@ def create_refresh_session(
     )
 
     db.add(session)
-    db.commit()
+    db.flush()
     db.refresh(session)
 
     return session
@@ -56,7 +56,7 @@ def revoke_refresh_session(
 ) -> None:
     session.revoked_at = datetime.now(timezone.utc)
 
-    db.commit()
+    db.flush()
 
 
 def revoke_all_user_refresh_sessions(
@@ -77,7 +77,7 @@ def revoke_all_user_refresh_sessions(
     for session in sessions:
         session.revoked_at = now
 
-    db.commit()
+    db.flush()
 
     return len(sessions)
 

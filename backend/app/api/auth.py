@@ -86,14 +86,6 @@ def login_user(
             detail="Invalid email or password",
         )
 
-    create_audit_log(
-        db=db,
-        user_id=user.id,
-        action="LOGIN_SUCCESS",
-        resource_type="AUTH",
-        resource_id=user.id,
-    )
-
     access_token = create_access_token(
         user_id=user.id,
         token_version=user.token_version,
@@ -108,6 +100,14 @@ def login_user(
         user_id=user.id,
         token_jti=token_jti,
         expires_at=expires_at,
+    )
+
+    create_audit_log(
+        db=db,
+        user_id=user.id,
+        action="LOGIN_SUCCESS",
+        resource_type="AUTH",
+        resource_id=user.id,
     )
 
     return TokenResponse(
@@ -286,7 +286,7 @@ def logout_all_devices(
     )
 
     current_user.token_version += 1
-    db.commit()
+    db.flush()
 
     create_audit_log(
         db=db,
@@ -338,7 +338,7 @@ def change_password(
     )
 
     current_user.token_version += 1
-    db.commit()
+    db.flush()
 
     create_audit_log(
         db=db,

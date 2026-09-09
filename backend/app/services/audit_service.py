@@ -86,6 +86,14 @@ def verify_audit_chain(
         if log.integrity_hash is not None
     ]
 
+    for log in logs:
+        if log.integrity_hash is None and log.previous_hash is not None:
+            return {
+                "valid": False,
+                "tampered_log_id": log.id,
+                "reason": "Missing integrity hash in audit chain",
+            }
+
     if not integrity_logs:
         return {
             "valid": True,

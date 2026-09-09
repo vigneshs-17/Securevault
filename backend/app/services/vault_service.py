@@ -29,7 +29,7 @@ def create_vault_item(
     )
 
     db.add(vault_item)
-    db.commit()
+    db.flush()
     db.refresh(vault_item)
 
     create_audit_log(
@@ -155,7 +155,7 @@ def update_vault_item(
             else None
         )
 
-    db.commit()
+    db.flush()
     db.refresh(vault_item)
 
     create_audit_log(
@@ -196,7 +196,7 @@ def delete_vault_item(
     resource_id = vault_item.id
 
     db.delete(vault_item)
-    db.commit()
+    db.flush()
 
     create_audit_log(
         db=db,
