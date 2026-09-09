@@ -1,18 +1,16 @@
 from fastapi import FastAPI
+from fastapi import Request
+from starlette.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.audit import router as audit_router
-from app.api.auth import router as auth_router
+from app.api.auth import limiter, router as auth_router
 from app.api.vault import router as vault_router
 from app.core.config import settings
 from app.core.security_headers import SecurityHeadersMiddleware
-
-
-limiter = Limiter(key_func=get_remote_address)
 
 
 app = FastAPI(
@@ -27,10 +25,12 @@ app = FastAPI(
 app.state.limiter = limiter
 
 
-app.add_exception_handler(
-    RateLimitExceeded,
-    _rate_limit_exceeded_handler,
-)
+def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
+    assert isinstance(exc, RateLimitExceeded)
+    return _rate_limit_exceeded_handler(request, exc)
+
+
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 
 app.add_middleware(

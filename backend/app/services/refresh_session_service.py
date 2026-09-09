@@ -31,6 +31,7 @@ def get_refresh_session(
     return (
         db.query(RefreshSession)
         .filter(RefreshSession.token_jti == token_jti)
+        .with_for_update()
         .first()
     )
 

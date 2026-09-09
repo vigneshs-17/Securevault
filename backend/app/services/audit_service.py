@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -15,6 +16,11 @@ def create_audit_log(
     resource_type: str,
     resource_id: int | None = None,
 ) -> AuditLog:
+    # Serialize the global chain's append, including the empty-table case.
+    # The transaction-scoped lock is released by the commit below.
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(7365637572657661)"))
+
     previous_log = (
         db.query(AuditLog)
         .filter(AuditLog.integrity_hash.is_not(None))
@@ -91,7 +97,16 @@ def verify_audit_chain(
 
     previous_hash = None
 
-    for log in integrity_logs:
+    for log in logs:
+        if log.integrity_hash is None:
+            if previous_hash is not None or log.previous_hash is not None:
+                return {
+                    "valid": False,
+                    "tampered_log_id": log.id,
+                    "reason": "Missing integrity hash in audit chain",
+                }
+            continue
+
         if log.previous_hash != previous_hash:
             return {
                 "valid": False,

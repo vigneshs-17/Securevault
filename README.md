@@ -175,7 +175,9 @@ SecureVault also includes integrity protection for audit records, helping demons
 
 ## 🚦 Rate Limiting
 
-API rate limiting is used to reduce abuse of sensitive endpoints.
+Login is limited to 5 requests per minute per client IP. Other endpoints currently
+have no rate limits. The default limiter storage is in memory and is local to each
+process; a multi-worker deployment needs shared storage and trusted proxy configuration.
 
 This helps protect authentication and application functionality against:
 
@@ -334,6 +336,8 @@ cd SecureVault
 cd backend
 ```
 
+Use Python 3.12 or newer and a running PostgreSQL server.
+
 ### 3. Create a virtual environment
 
 Windows:
@@ -370,7 +374,32 @@ to:
 .env
 ```
 
-Then replace the placeholder values with secure local secrets.
+Then replace the placeholder values with secure local secrets. Use the installed
+Psycopg 3 driver in the URL:
+
+```text
+DATABASE_URL=postgresql+psycopg://username:password@localhost:5432/securevault
+```
+
+Create the database and database user in PostgreSQL first. URL-encode special
+characters in the username/password. Generate separate JWT and audit keys by
+running the first command twice, and a Fernet key with the second:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Keep the generated values in your local `.env`. Keep a secure backup of the vault
+key: changing or losing it makes existing vault ciphertext unreadable.
+
+Initialize tables for a new database:
+
+```powershell
+python -m app.db.init_db
+```
+
+This creates missing tables; it does not migrate existing table schemas.
 
 ### 7. Start the API
 
@@ -391,13 +420,20 @@ http://127.0.0.1:8000
 From the `backend` directory:
 
 ```powershell
-pytest -q
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
 ```
 
-Current backend test suite:
+Tests create a temporary SQLite database and generate disposable cryptographic
+keys before the application loads. Each test gets fresh tables and seeded test
+users; your `.env` database is not used. SQLite tests do not validate PostgreSQL
+locking or production deployment behavior.
 
-```text
-29 passed
+Static checks from `backend`:
+
+```powershell
+python -m ruff check app tests
+python -m mypy app
 ```
 
 The test suite covers important functionality including authentication, encryption, vault operations, audit functionality, and HTTP security controls.
@@ -465,13 +501,25 @@ SecureVault includes automated tests covering security-critical functionality.
 
 Testing is used to verify behavior rather than assuming security controls work correctly.
 
-Current result:
-
-```text
-29 passed
-```
+Run the commands above for the current result; the suite also includes regression tests for validation, token expiry, configuration, and import order.
 
 ---
+
+## Known Security Boundaries
+
+- Passwords and notes are encrypted; titles, usernames, and websites are plaintext.
+- `/audit/logs` is user-scoped. `/audit/verify` checks the global chain and exposes
+  global counts and a failing record ID to authenticated users.
+- Audit HMACs cover the action, user, resource, and previous hash, but not timestamps
+  or row IDs. Legacy unhashed rows are supported before the chain starts. Without an
+  externally trusted checkpoint, removing the entire chain or its tail cannot always
+  be detected. PostgreSQL audit appends use a transaction-scoped advisory lock;
+  the SQLite test suite does not establish multi-process concurrency guarantees.
+- Refresh-session lookup locks the row in PostgreSQL to serialize use of the same
+  token. Several operations still span separate commits, so crash recovery and races
+  with password changes or logout-all need further transaction hardening.
+- Single-session logout revokes the refresh token; its access token remains usable
+  until expiry. Logout-all and password changes also revoke existing access tokens.
 
 ## 🗺️ Planned Improvements
 

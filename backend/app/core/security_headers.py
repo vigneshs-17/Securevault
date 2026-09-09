@@ -30,13 +30,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "max-age=31536000; includeSubDomains"
             )
 
-        if request.url.path.startswith("/docs"):
+        if request.url.path in {"/docs", "/docs/oauth2-redirect", "/redoc"}:
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
                 "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
                 "img-src 'self' data: https://fastapi.tiangolo.com; "
                 "connect-src 'self'; "
+                "font-src 'self' https://fonts.gstatic.com; "
+                "worker-src 'self' blob:; "
                 "frame-ancestors 'none'; "
                 "base-uri 'self'; "
                 "form-action 'self';"

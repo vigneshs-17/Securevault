@@ -1,3 +1,4 @@
+from cryptography.fernet import Fernet
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -86,11 +87,10 @@ class Settings(BaseSettings):
         cls,
         value: str,
     ) -> str:
-        if len(value) < 40:
-            raise ValueError(
-                "vault_encryption_key appears too short "
-                "to be a valid Fernet key"
-            )
+        try:
+            Fernet(value.encode("utf-8"))
+        except (ValueError, TypeError) as exc:
+            raise ValueError("vault_encryption_key must be a valid Fernet key") from exc
 
         return value
 

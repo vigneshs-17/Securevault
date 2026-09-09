@@ -5,7 +5,7 @@ class VaultItemCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     username: str | None = Field(default=None, max_length=255)
     password: str = Field(min_length=1, max_length=4096)
-    website: HttpUrl | None = None
+    website: HttpUrl | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=10000)
 
     @field_validator("title")
@@ -66,7 +66,7 @@ class VaultItemUpdate(BaseModel):
         min_length=1,
         max_length=4096,
     )
-    website: HttpUrl | None = None
+    website: HttpUrl | None = Field(default=None, max_length=500)
     notes: str | None = Field(
         default=None,
         max_length=10000,
@@ -79,7 +79,7 @@ class VaultItemUpdate(BaseModel):
         value: str | None,
     ) -> str | None:
         if value is None:
-            return None
+            raise ValueError("title cannot be null")
 
         value = value.strip()
 
@@ -108,7 +108,7 @@ class VaultItemUpdate(BaseModel):
         value: str | None,
     ) -> str | None:
         if value is None:
-            return None
+            raise ValueError("password cannot be null")
 
         if not value:
             raise ValueError("password cannot be empty")

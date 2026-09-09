@@ -1,7 +1,7 @@
-from app.db.base import Base
-from app.db.database import engine
-from app.models import AuditLog, RefreshSession, User, VaultItem
+"""Database package; importing models must not eagerly import other models."""
 
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    from app.db.init_db import init_db as initialize
+
+    initialize()

@@ -127,6 +127,7 @@ def refresh_access_token(
             token_data.refresh_token,
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],
+            options={"require": ["sub", "exp", "iat", "token_type", "jti"]},
         )
 
         user_id = int(payload["sub"])
@@ -142,7 +143,7 @@ def refresh_access_token(
     except HTTPException:
         raise
 
-    except (InvalidTokenError, KeyError, ValueError):
+    except (InvalidTokenError, KeyError, ValueError, TypeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
@@ -219,6 +220,7 @@ def logout_user(
             token_data.refresh_token,
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],
+            options={"require": ["sub", "exp", "iat", "token_type", "jti"]},
         )
 
         user_id = int(payload["sub"])
@@ -234,7 +236,7 @@ def logout_user(
     except HTTPException:
         raise
 
-    except (InvalidTokenError, KeyError, ValueError):
+    except (InvalidTokenError, KeyError, ValueError, TypeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",

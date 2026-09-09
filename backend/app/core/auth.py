@@ -23,6 +23,7 @@ def get_current_user(
             token,
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],
+            options={"require": ["sub", "exp", "iat", "token_type"]},
         )
 
         token_type = payload.get("token_type")
