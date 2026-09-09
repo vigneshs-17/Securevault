@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+.envpytest_error.txt
+.env
+pytest_error.txt
