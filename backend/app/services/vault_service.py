@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.vault_item import VaultItem
@@ -14,8 +17,9 @@ def create_vault_item(
     vault_item = VaultItem(
         user_id=user_id,
         title=item_data.title,
+        item_type=item_data.item_type,
         username=item_data.username,
-        encrypted_password=encrypt_value(item_data.password),
+        encrypted_password=encrypt_value(item_data.password or ""),
         website=(
             str(item_data.website)
             if item_data.website is not None
@@ -90,6 +94,9 @@ def get_vault_item(
     return {
         "id": vault_item.id,
         "title": vault_item.title,
+        "item_type": vault_item.item_type,
+        "created_at": vault_item.created_at,
+        "updated_at": vault_item.updated_at,
         "username": vault_item.username,
         "password": decrypt_value(vault_item.encrypted_password),
         "website": vault_item.website,
@@ -127,6 +134,10 @@ def update_vault_item(
         return None
 
     update_data = item_data.model_dump(exclude_unset=True)
+    if vault_item.item_type == "note" and "notes" in update_data and not update_data["notes"]:
+        raise HTTPException(status_code=422, detail="A secure note cannot be empty")
+    if update_data:
+        vault_item.updated_at = datetime.now(timezone.utc)
 
     if "title" in update_data:
         vault_item.title = update_data["title"]

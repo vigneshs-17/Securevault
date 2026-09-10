@@ -65,3 +65,21 @@ def get_current_user(
         )
 
     return user
+
+
+def get_current_user_locked(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Serialize account mutations and reject authentication stale after waiting."""
+    authenticated_version = current_user.token_version
+    # NO KEY UPDATE serializes account writes without blocking audit foreign-key
+    # checks. Keep this lock until the operation and audit entry commit together.
+    db.refresh(current_user, with_for_update={"key_share": True})
+    if current_user.token_version != authenticated_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return current_user

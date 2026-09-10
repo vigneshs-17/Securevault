@@ -1,12 +1,24 @@
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 
 class VaultItemCreate(BaseModel):
+    item_type: Literal["password", "note"] = "password"
     title: str = Field(min_length=1, max_length=255)
     username: str | None = Field(default=None, max_length=255)
-    password: str = Field(min_length=1, max_length=4096)
+    password: str | None = Field(default=None, min_length=1, max_length=4096)
     website: HttpUrl | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=10000)
+
+    @model_validator(mode="after")
+    def validate_item_content(self):
+        if self.item_type == "password" and not self.password:
+            raise ValueError("A password is required for password entries")
+        if self.item_type == "note" and not self.notes:
+            raise ValueError("A secure note cannot be empty")
+        return self
 
     @field_validator("title")
     @classmethod
@@ -128,6 +140,9 @@ class VaultItemUpdate(BaseModel):
 
 
 class VaultItemResponse(BaseModel):
+    item_type: Literal["password", "note"] = "password"
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     id: int
     title: str
     username: str | None = None
@@ -139,6 +154,9 @@ class VaultItemResponse(BaseModel):
 
 
 class VaultItemListResponse(BaseModel):
+    item_type: Literal["password", "note"] = "password"
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     id: int
     title: str
     username: str | None = None

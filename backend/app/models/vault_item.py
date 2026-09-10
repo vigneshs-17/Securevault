@@ -1,4 +1,6 @@
-from sqlalchemy import ForeignKey, String, Text
+from datetime import datetime, timezone
+
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -19,6 +21,10 @@ class VaultItem(Base):
         String(255),
         nullable=False,
     )
+
+    item_type: Mapped[str] = mapped_column(String(20), default="password", server_default="password", nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     username: Mapped[str | None] = mapped_column(
         String(255),

@@ -1,10 +1,12 @@
 # 🔐 SecureVault
 
-SecureVault is a security-focused secrets and credential management backend built with **FastAPI**, **SQLAlchemy**, and modern cryptographic controls.
+![SecureVault application preview](docs/images/securevault-preview.png)
+
+SecureVault is a full-stack, security-focused secrets and credential manager built with a responsive browser interface, **FastAPI**, **SQLAlchemy**, **PostgreSQL**, and modern cryptographic controls.
 
 The project demonstrates how sensitive information such as passwords, API keys, tokens, and other secrets can be stored and managed securely while applying authentication, authorization, encryption, session management, audit logging, and API security controls.
 
-SecureVault was designed as a cybersecurity-focused backend engineering project rather than a basic CRUD password manager.
+SecureVault was designed as a cybersecurity and full-stack engineering project rather than a basic CRUD password manager.
 
 ---
 
@@ -396,10 +398,13 @@ key: changing or losing it makes existing vault ciphertext unreadable.
 Initialize tables for a new database:
 
 ```powershell
-python -m app.db.init_db
+python -m alembic upgrade head
 ```
 
-This creates missing tables; it does not migrate existing table schemas.
+This creates the schema and records its revision. Future `upgrade head` runs
+apply only pending migrations. For databases created before migrations were added,
+follow the adoption procedure below first; do not run the initial migration over
+existing tables.
 
 ### 7. Start the API
 
@@ -517,8 +522,12 @@ Run the commands above for the current result; the suite also includes regressio
   the SQLite test suite does not establish multi-process concurrency guarantees.
 - Refresh-session lookup locks the row in PostgreSQL to serialize use of the same
   token. Authentication and vault writes commit together with their audit entry;
-  a failure before that commit rolls the operation back. Cross-request races with
-  password changes or logout-all still need PostgreSQL concurrency testing and hardening.
+  a failure before that commit rolls the operation back. Login, refresh, logout,
+  logout-all and password changes take a PostgreSQL NO KEY UPDATE lock on the user
+  before changing sessions. Password changes and logout-all recheck token revocation
+  after waiting for that lock. Five PostgreSQL concurrency tests cover one-time
+  refresh, simultaneous password changes, and races with account-wide revocation.
+  This does not replace broader load or deployment testing.
 - Single-session logout revokes the refresh token; its access token remains usable
   until expiry. Logout-all and password changes also revoke existing access tokens.
 
@@ -530,7 +539,6 @@ Future engineering improvements may include:
 - CI/CD security pipeline
 - Dependency vulnerability scanning
 - Static application security testing
-- Database migrations
 - PostgreSQL production configuration
 - Structured application logging
 - Expanded adversarial security tests
@@ -593,3 +601,131 @@ Interests:
 - Backend Engineering
 - Cloud Security
 - Security Automation
+## Local PostgreSQL test run
+
+From `backend`, run `python test_postgres.py`. The helper reads local connection
+credentials without printing them and targets only `securevault_test`. It does
+not modify `.env`. Alternatively, supply `SECUREVAULT_TEST_DATABASE_URL` explicitly.
+Only localhost PostgreSQL/Psycopg URLs for that exact database, without query
+parameters, are accepted. Each run creates a randomly named schema and removes
+that schema afterwards; existing schemas are not used. The test role needs
+CONNECT and CREATE on the test database. Interrupted runs may leave an isolated
+`sv_test_` schema for later cleanup.
+
+Plain `python -m pytest -q` continues to use disposable SQLite unless the explicit
+test URL is set. Pytest now uses a fresh temporary directory per run to avoid
+Windows shared-temp-folder permission conflicts. PostgreSQL integration tests
+remain separate from dedicated concurrent-request tests.
+
+
+### Authentication concurrency checkpoint
+
+Verified suite: 70 passed with the PostgreSQL configuration; SQLite: 65 passed,
+5 PostgreSQL-only tests skipped. Two test dependency deprecation warnings remain.
+Run only concurrency tests from `backend` with:
+
+```powershell
+python test_postgres.py tests/test_concurrency.py
+```
+
+The tests coordinate real concurrent requests with separate database sessions.
+Password-change tests force both requests to authenticate before either handler
+runs, verifying that stale authentication is rejected after waiting for the lock.
+
+
+## Versioned database migrations
+
+Install the updated requirements in the active backend virtual environment:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Alembic reads `DATABASE_URL` from the process environment or `backend/.env`.
+Connection credentials are not stored in `alembic.ini`. Run commands from `backend`.
+
+For a new empty database:
+
+```powershell
+python -m alembic upgrade head
+python -m alembic current
+python -m alembic check
+```
+
+The existing `python -m app.db.init_db` entry point now performs the same versioned
+upgrade. It no longer creates tables outside migration tracking.
+
+### Existing databases created before Alembic
+
+Take a database backup and preserve the encryption keys before adoption. Stop
+application writes and run one migration process at a time. The initial schema
+includes users, vault items, refresh sessions, audit logs, indexes and foreign keys.
+
+```powershell
+python -m app.db.migrate adopt-existing
+python -m alembic upgrade head
+python -m alembic current
+python -m alembic check
+```
+
+The guarded adoption command compares table/column types, nullability, server
+defaults, indexes, unique and foreign-key constraints, and primary keys before
+recording `0001_initial_schema`. It refuses mismatches or already tracked databases.
+It does not rewrite existing rows. Adoption compares the frozen baseline schema;
+then upgrade to head to add item types and nullable timestamps. Legacy dates stay
+unrecorded. The current supported head is `0002_vault_metadata`.
+Review a mismatch instead of bypassing the check with an unconditional stamp.
+
+Schema comparison does not validate every PostgreSQL object (such as grants,
+triggers or row-security policies); those require separate deployment review.
+
+### Future schema changes
+
+Change the SQLAlchemy models, then generate and manually inspect a migration:
+
+```powershell
+python -m alembic revision --autogenerate -m "describe schema change"
+python -m alembic upgrade head
+python -m alembic check
+```
+
+The initial migration is frozen and does not import live model definitions. Do not
+edit already applied migrations; add new revisions. Test data migrations and
+backup restoration before deployment. Downgrading to `base` drops all four tables
+and their data, so the automated rollback check runs only in disposable test storage.
+
+Migration checkpoint: PostgreSQL configuration 76 passed; SQLite 71 passed and
+5 PostgreSQL concurrency tests skipped. Both include migration/schema consistency,
+repeat upgrade, guarded adoption, row preservation and downgrade/re-upgrade tests.
+The normal test fixture now builds its tables through migrations.
+
+Reference: [Alembic cookbook](https://alembic.sqlalchemy.org/en/latest/cookbook.html).
+
+
+## Docker development setup
+
+See [DOCKER.md](DOCKER.md) for isolated local startup, migrations, secret generation and data persistence. Image build and runtime verification passed on 2026-09-10, including migrations, authentication, vault operations, audit integrity, and encrypted data persistence across container recreation. This is a local development setup; production deployment remains a separate step.
+
+## Frontend
+
+### One-click start in VS Code
+
+Open the project folder in VS Code and press `Ctrl+Shift+B`. The default
+`SecureVault: Start` task starts Docker Desktop when necessary, waits for the
+database and API, and then starts the local frontend. Open
+http://127.0.0.1:3000 when the terminal reports that SecureVault is ready.
+Keep the task terminal open while using the frontend and press `Ctrl+C` to stop
+the frontend. The containers retain their database between starts.
+
+The premium dark frontend includes a landing page, dashboard, passwords, secure
+notes, generator, security center, activity and settings. It supports real CRUD,
+reveal/copy, search, session locking, account password changes and on-demand
+password checks. See [frontend/README.md](frontend/README.md) for usage and boundaries.
+
+Start the Docker backend, run `node frontend/server.mjs`, and open
+http://127.0.0.1:3000. The frontend binds only to this computer.
+
+Latest validation (2026-09-10): PostgreSQL suite 79 passed with 3 dependency
+deprecation warnings; frontend unit suite 9 passed; Ruff and mypy passed.
+Docker rebuilt successfully and Alembic found no schema drift at revision
+`0002_vault_metadata`. Production deployment remains separate work.

@@ -118,6 +118,6 @@ def test_database_initializer_creates_all_tables(tmp_path):
     code = ("from app.db.init_db import init_db; init_db(); "
             "from app.db.database import engine; from sqlalchemy import inspect; "
             "assert set(inspect(engine).get_table_names()) == "
-            "{'users', 'vault_items', 'refresh_sessions', 'audit_logs'}")
+            "{'users', 'vault_items', 'refresh_sessions', 'audit_logs', 'alembic_version'}")
     result = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

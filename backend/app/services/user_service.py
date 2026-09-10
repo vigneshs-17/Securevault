@@ -82,10 +82,13 @@ def create_user(
 def get_user_by_email(
     db: Session,
     email: str,
+    *,
+    for_update: bool = False,
 ) -> User | None:
-    return db.scalar(
-        select(User).where(User.email == email)
-    )
+    query = select(User).where(User.email == email)
+    if for_update:
+        query = query.with_for_update(key_share=True).execution_options(populate_existing=True)
+    return db.scalar(query)
 
 
 def change_user_password(

@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -6,7 +8,7 @@ from sqlalchemy.orm import Session
 import jwt
 from jwt import InvalidTokenError
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, get_current_user_locked
 from app.core.config import settings
 from app.core.security import (
     create_access_token,
@@ -15,6 +17,7 @@ from app.core.security import (
 )
 from app.db.dependencies import get_db
 from app.models.user import User
+from app.models.refresh_session import RefreshSession
 from app.schemas.user import (
     ChangePasswordRequest,
     RefreshTokenRequest,
@@ -61,7 +64,7 @@ def login_user(
     user_data: UserLogin,
     db: Session = Depends(get_db),
 ):
-    user = get_user_by_email(db, user_data.email)
+    user = get_user_by_email(db, user_data.email, for_update=True)
 
     if user is None:
         raise HTTPException(
@@ -149,7 +152,7 @@ def refresh_access_token(
             detail="Invalid or expired refresh token",
         )
 
-    user = db.get(User, user_id)
+    user = db.get(User, user_id, with_for_update={"key_share": True}, populate_existing=True)
 
     if user is None:
         raise HTTPException(
@@ -242,6 +245,13 @@ def logout_user(
             detail="Invalid or expired refresh token",
         )
 
+    user = db.get(User, user_id, with_for_update={"key_share": True}, populate_existing=True)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
     refresh_session = get_refresh_session(
         db=db,
         token_jti=token_jti,
@@ -277,7 +287,7 @@ def logout_user(
 
 @router.post("/logout-all")
 def logout_all_devices(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_locked),
     db: Session = Depends(get_db),
 ):
     revoked_sessions = revoke_all_user_refresh_sessions(
@@ -305,7 +315,7 @@ def logout_all_devices(
 @router.post("/change-password")
 def change_password(
     password_data: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_locked),
     db: Session = Depends(get_db),
 ):
     if not verify_password(
@@ -359,3 +369,16 @@ def get_me(
     current_user: User = Depends(get_current_user),
 ):
     return current_user
+
+@router.get("/sessions")
+def list_active_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sessions = db.query(RefreshSession).filter(
+        RefreshSession.user_id == current_user.id,
+        RefreshSession.revoked_at.is_(None),
+        RefreshSession.expires_at > datetime.now(timezone.utc),
+    ).order_by(RefreshSession.created_at.desc()).all()
+    return [{"id": session.id, "created_at": session.created_at, "expires_at": session.expires_at}
+            for session in sessions]

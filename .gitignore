@@ -7,8 +7,11 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+node_modules/
+dist/
 .env
 .env.*
 !.env.example
 *.db
 *.sqlite3
+!.env.docker.example
