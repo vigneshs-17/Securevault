@@ -121,3 +121,12 @@ def test_database_initializer_creates_all_tables(tmp_path):
             "{'users', 'vault_items', 'refresh_sessions', 'audit_logs', 'alembic_version'}")
     result = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_oversized_passwords_are_rejected_before_hashing():
+    huge = "Aa1!" * 100
+    for path, body in (
+        ("/auth/register", {"email": "big@example.com", "password": huge}),
+        ("/auth/login", {"email": "big@example.com", "password": huge}),
+    ):
+        assert client.post(path, json=body).status_code == 422

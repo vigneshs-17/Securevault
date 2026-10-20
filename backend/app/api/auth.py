@@ -12,6 +12,7 @@ from app.core.auth import get_current_user, get_current_user_locked
 from app.core.config import settings
 from app.core.security import (
     create_access_token,
+    DUMMY_HASH,
     create_refresh_token,
     verify_password,
 )
@@ -50,7 +51,9 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/register", response_model=UserResponse)
+@limiter.limit("20/minute")
 def register_user(
+    request: Request,
     user_data: UserCreate,
     db: Session = Depends(get_db),
 ):
@@ -67,6 +70,7 @@ def login_user(
     user = get_user_by_email(db, user_data.email, for_update=True)
 
     if user is None:
+        verify_password(user_data.password, DUMMY_HASH)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -121,7 +125,9 @@ def login_user(
 
 
 @router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("30/minute")
 def refresh_access_token(
+    request: Request,
     token_data: RefreshTokenRequest,
     db: Session = Depends(get_db),
 ):

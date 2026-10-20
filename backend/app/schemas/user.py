@@ -1,14 +1,17 @@
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+# Bound input so hashing cannot be used for CPU exhaustion.
+Password = Field(min_length=1, max_length=128)
 
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Password
 
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Password
 
 
 class UserResponse(BaseModel):
@@ -29,5 +32,5 @@ class RefreshTokenRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
+    current_password: str = Password
+    new_password: str = Password

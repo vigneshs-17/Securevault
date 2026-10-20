@@ -14,6 +14,10 @@ def hash_password(password: str) -> str:
     return password_hash.hash(password)
 
 
+# Verified against when the account does not exist, so response time does not reveal it.
+DUMMY_HASH = password_hash.hash("timing-equalizer")
+
+
 def verify_password(
     password: str,
     hashed_password: str,
