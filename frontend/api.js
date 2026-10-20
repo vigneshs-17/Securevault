@@ -16,7 +16,9 @@ function friendlyDetail(detail) {
 }
 
 // Session tokens are intentionally never persisted in browser storage.
-export function createClient(fetcher = fetch, base = 'http://127.0.0.1:8000') {
+// Local dev (port 3000) calls the API directly; a proxied deployment serves it under /api.
+const defaultBase = () => typeof location !== 'undefined' && location.port !== '3000' ? '/api' : 'http://127.0.0.1:8000';
+export function createClient(fetcher = fetch, base = defaultBase()) {
   let tokens = null;
   let generation = 0;
   let rotation = null;

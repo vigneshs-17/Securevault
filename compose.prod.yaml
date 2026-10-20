@@ -1,0 +1,83 @@
+# Server deployment: Caddy (HTTPS) -> web (static UI) + api -> Postgres.
+# Setup:  python backend/scripts/init_docker_env.py --domain vault.example.com
+#         docker compose -f compose.prod.yaml --env-file .env.prod up -d --build --wait
+name: securevault-prod
+
+x-backend: &backend
+  build: ./backend
+  image: securevault-api:prod
+  environment:
+    DATABASE_URL: postgresql+psycopg://securevault:${SECUREVAULT_DB_PASSWORD:?Run init_docker_env.py --domain}@db:5432/securevault
+    JWT_SECRET_KEY: ${JWT_SECRET_KEY:?}
+    VAULT_ENCRYPTION_KEY: ${VAULT_ENCRYPTION_KEY:?}
+    AUDIT_INTEGRITY_KEY: ${AUDIT_INTEGRITY_KEY:?}
+    ENVIRONMENT: production
+    ALLOWED_HOSTS: ${SECUREVAULT_DOMAIN:?}
+    CORS_ORIGINS: https://${SECUREVAULT_DOMAIN:?}
+    DOCS_ENABLED: "false"
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?}
+      SECUREVAULT_DB_PASSWORD: ${SECUREVAULT_DB_PASSWORD:?}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/10-securevault.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  migrate:
+    <<: *backend
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck: { disable: true }
+    restart: "no"
+
+  api:
+    <<: *backend
+    # Not published to the host. Trust X-Forwarded-For from the proxy only so
+    # per-client rate limits work instead of throttling everyone as Caddy's IP.
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    image: securevault-web:prod
+    environment:
+      API_ORIGIN: "'self'"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2-alpine
+    environment:
+      SECUREVAULT_DOMAIN: ${SECUREVAULT_DOMAIN:?}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [api, web]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  caddy_data:

@@ -52,6 +52,15 @@ if (-not (Test-DockerEngine $docker)) {
     }
 }
 
+if (-not (Test-Path -LiteralPath '.env.docker')) {
+    $python = Join-Path $projectRoot 'backend\venv\Scripts\python.exe'
+    if (-not (Test-Path -LiteralPath $python)) { $python = (Get-Command python -ErrorAction Stop).Source }
+    Write-Host 'First run: generating local secrets (.env.docker)...'
+    & $python 'backend\scripts\init_docker_env.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not generate .env.docker.' }
+}
+git config core.hooksPath .githooks 2>$null  # enable the pre-commit quality gate
+
 Write-Host 'Starting the SecureVault database and API...'
 & $docker compose --env-file '.env.docker' up -d --wait
 if ($LASTEXITCODE -ne 0) {
@@ -74,5 +83,6 @@ if (-not (Test-Path -LiteralPath $node)) {
 
 Write-Host ''
 Write-Host 'SecureVault is ready: http://127.0.0.1:3000' -ForegroundColor Cyan
+Start-Process 'http://127.0.0.1:3000'
 Write-Host 'Keep this terminal open. Press Ctrl+C when your demonstration is finished.'
 & $node (Join-Path $projectRoot 'frontend\server.mjs')

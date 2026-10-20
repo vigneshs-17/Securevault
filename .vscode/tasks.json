@@ -22,6 +22,20 @@
         "panel": "dedicated",
         "clear": true
       }
+    },
+    {
+      "label": "SecureVault: Check (full)",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "scripts/check.py"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     }
   ]
 }
