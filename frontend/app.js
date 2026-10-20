@@ -3,6 +3,7 @@ import { icon } from './icons.js';
 import { renderLanding } from './landing.js';
 import { shell, view, pages, vaultResults, filteredItems, activityResults } from './views.js';
 import { escape as esc, button, iconButton, badge, loading, date, modal, passwordField } from './ui.js';
+import { initMotion } from './motion.js';
 import { generatePassword, passwordStrength, accountPasswordError } from './security.js';
 
 const $ = selector => document.querySelector(selector);
@@ -14,7 +15,7 @@ const state = {
 };
 let sessionEpoch=0, detailEpoch=0, detail=null, editing=null, locking=false, scanning=false;
 let lockTimer, hideTimer, lastActivity=Date.now(), authMode='login', confirmAction=null;
-let observer;
+let observer, stopMotion;
 
 function toast(message, error=false) {
   const element=document.createElement('div'); element.className='toast'+(error?' toast-error':'');
@@ -27,6 +28,7 @@ function initLanding() {
   observer?.disconnect();
   observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('visible');observer.unobserve(entry.target);}}),{threshold:.08});
   document.querySelectorAll('.reveal-section').forEach(section=>observer.observe(section));
+  stopMotion?.(); stopMotion=initMotion($('#landing'));
 }
 initLanding();
 
@@ -51,7 +53,7 @@ async function submitAuth(form) {
   setFormBusy(form,true);error.textContent=authMode==='register'?'Creating your vault…':'Opening your vault…';
   try {
     if(authMode==='register') {await api.register(credentials);setFormBusy(form,false);auth('login','Your account is ready. Sign in to open your vault.');$('#email').value=credentials.email;$('#password').focus();}
-    else {await api.login(credentials);const user=await api.request('/auth/me');setFormBusy(form,false);closeDialog($('#auth-dialog'));state.user=user;sessionEpoch++;$('#landing').hidden=true;$('#workspace').hidden=false;$('#workspace').innerHTML=shell(user);$('.skip-link').href='#app-main';$('#app-main').innerHTML=loading();lastActivity=Date.now();startLockTimer();await refreshData();}
+    else {await api.login(credentials);const user=await api.request('/auth/me');setFormBusy(form,false);closeDialog($('#auth-dialog'));state.user=user;sessionEpoch++;$('#landing').hidden=true;stopMotion?.();$('#workspace').hidden=false;$('#workspace').innerHTML=shell(user);$('.skip-link').href='#app-main';$('#app-main').innerHTML=loading();lastActivity=Date.now();startLockTimer();await refreshData();}
   } catch(failure){api.clear();error.textContent=failure.message;setFormBusy(form,false);}
 }
 async function refreshData() {

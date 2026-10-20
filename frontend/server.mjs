@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-const assets = new Map([['/', ['index.html', 'text/html']], ['/style.css', ['style.css', 'text/css']], ...['app','api','icons','ui','views','security','landing'].map(name=>['/'+name+'.js',[name+'.js','text/javascript']]), ['/assets/InterVariable.woff2',['assets/InterVariable.woff2','font/woff2']]]);
+const assets = new Map([['/', ['index.html', 'text/html']], ['/style.css', ['style.css', 'text/css']], ...['app','api','icons','ui','views','security','landing','motion'].map(name=>['/'+name+'.js',[name+'.js','text/javascript']]), ['/assets/InterVariable.woff2',['assets/InterVariable.woff2','font/woff2']]]);
 const server = createServer(async (request, response) => {
   const asset = assets.get(request.url?.split('?')[0]);
   const headers = {
