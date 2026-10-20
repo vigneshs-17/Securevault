@@ -4,7 +4,8 @@
 
 | Goal | Command |
 |---|---|
-| Start everything (Docker DB + API + UI, auto-generates secrets on first run, opens browser) | VS Code task **SecureVault: Start**, or `powershell -File scripts/start-securevault.ps1` |
+| Start everything (double-click) | `start.cmd` (auto-generates secrets on first run, starts Docker if needed, opens the browser) |
+| Stop everything, keep data | `stop.cmd` |
 | Full quality gate (ruff, pytest, node tests, mypy, pip-audit) | `python scripts/check.py` |
 | Fast gate (what the pre-commit hook runs) | `python scripts/check.py --fast` |
 | Enable pre-commit hook manually | `python scripts/check.py --install-hooks` (the start script also does this) |
