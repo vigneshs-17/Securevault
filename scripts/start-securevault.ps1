@@ -85,4 +85,7 @@ Write-Host ''
 Write-Host 'SecureVault is ready: http://127.0.0.1:3000' -ForegroundColor Cyan
 Start-Process 'http://127.0.0.1:3000'
 Write-Host 'Keep this terminal open. Press Ctrl+C when your demonstration is finished.'
+$portLine = Select-String -Path '.env.docker' -Pattern '^SECUREVAULT_HTTP_PORT=(\d+)' | Select-Object -First 1
+$apiPort = if ($portLine) { $portLine.Matches[0].Groups[1].Value } else { '8000' }
+$env:API_ORIGIN = "http://127.0.0.1:$apiPort"
 & $node (Join-Path $projectRoot 'frontend\server.mjs')
