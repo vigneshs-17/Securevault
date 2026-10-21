@@ -1,5 +1,7 @@
 ﻿# 🔐 SecureVault
 
+[![CI](https://github.com/vigneshs-17/Securevault/actions/workflows/ci.yml/badge.svg)](https://github.com/vigneshs-17/Securevault/actions/workflows/ci.yml)
+
 ![SecureVault application preview](docs/images/securevault-preview.png)
 
 SecureVault is a full-stack, security-focused secrets and credential manager built with a responsive browser interface, **FastAPI**, **SQLAlchemy**, **PostgreSQL**, and modern cryptographic controls.
@@ -91,7 +93,7 @@ SecureVault implements token-based authentication using JWT combined with databa
 - **Session Revocation:**
   - *Single Logout (`/auth/logout`):* Revokes the specific refresh session.
   - *Global Logout (`/auth/logout-all`):* Revokes all user refresh sessions and increments `token_version`.
-  - *Password Change (`/auth/change-password`):* Invalids all active sessions and increments `token_version`.
+  - *Password Change (`/auth/change-password`):* Invalidates all active sessions and increments `token_version`.
 - **Concurrency Protection:** Account-modifying endpoints acquire a `FOR NO KEY UPDATE` lock on the user row and re-verify `token_version` after acquiring the lock, defeating race conditions between concurrent requests.
 
 ---
@@ -638,7 +640,6 @@ SecureVault includes comprehensive automated regression tests:
 
 Future production and engineering enhancements include:
 
-- **CI/CD Security Pipeline:** GitHub Actions automation for tests, linting, and type verification.
 - **Automated Dependency Scanning:** Dependabot and container vulnerability scanners (Trivy).
 - **Static Application Security Testing (SAST):** Integration of Semgrep and Bandit security scanners.
 - **Production PostgreSQL Hardening:** Read replicas, connection pooling (PgBouncer), and automated snapshot backups.
