@@ -123,6 +123,48 @@ def test_refresh_token_rotation():
         == "Invalid or revoked refresh token"
     )
 
+def test_refresh_token_reuse_revokes_all_sessions_and_access_token():
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+    assert login_response.status_code == 200
+    initial_tokens = login_response.json()
+    r1 = initial_tokens["refresh_token"]
+
+    refresh_response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": r1},
+    )
+    assert refresh_response.status_code == 200
+    rotated_tokens = refresh_response.json()
+    r2 = rotated_tokens["refresh_token"]
+    a2 = rotated_tokens["access_token"]
+
+    me_resp = client.get("/auth/me", headers={"Authorization": f"Bearer {a2}"})
+    assert me_resp.status_code == 200
+
+    replay_response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": r1},
+    )
+    assert replay_response.status_code == 401
+    assert replay_response.json()["detail"] == "Invalid or revoked refresh token"
+
+    r2_response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": r2},
+    )
+    assert r2_response.status_code == 401
+
+    me_revoked_resp = client.get("/auth/me", headers={"Authorization": f"Bearer {a2}"})
+    assert me_revoked_resp.status_code == 401
+    assert me_revoked_resp.json()["detail"] == "Authentication token has been revoked"
+
+
 
 def test_invalid_access_token_is_rejected():
     response = client.get(
