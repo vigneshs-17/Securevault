@@ -261,7 +261,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 | Finding 6 | Server-Side Shared Key Architecture vs Zero-Knowledge | Medium | **Known limitation** |
 | Finding 7 | Global Information Disclosure via /audit/verify | Low | **Fixed in PR #4** |
 | Finding 8 | Access Token Valid Until Expiry After Single Logout | Low | **Known limitation** |
-| Finding 9 | Container Base Images Use Mutable Floating Tags | Low | **Known limitation** |
+| Finding 9 | Container Base Images Use Mutable Floating Tags | Low | **Known limitation (Dependabot tracking in PR #6; docker-compose fix in PR #18)** |
 | Finding 10 | Permissive `--forwarded-allow-ips "*"` on Production Uvicorn | Low | **Fixed in PR #4** |
 | Finding 11 | Asymmetric Audit Logging on Failed Logins for Unknown Users | Low | **Fixed in PR #4; hardened in PR #17** |
 | Finding 12 | Schema `Password` Length Discrepancy with Service Validator | Info | **Fixed in PR #4** |
@@ -437,7 +437,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/Dockerfile:1`, `frontend/Dockerfile:1`, `compose.prod.yaml:25, 71`
 - **Severity:** Low / Info
-- **Status:** Known limitation
+- **Status:** Known limitation (Automated tracking via Dependabot PR #6 & PR #18)
 - **Exploit Scenario:**
   `backend/Dockerfile` specifies `FROM python:3.12-slim`, and `frontend/Dockerfile` specifies `FROM node:22-alpine`. Similarly, `compose.prod.yaml` uses `postgres:18` and `caddy:2-alpine`. These tags are mutable floating tags. An upstream image build or compromised upstream tag on Docker Hub can introduce breaking changes or untracked vulnerabilities into production environments upon rebuild.
 - **Fix:**
