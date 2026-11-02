@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import OrderedDict
 from datetime import datetime, timezone
 import threading
 import time
@@ -53,11 +53,16 @@ router = APIRouter(
 
 limiter = Limiter(key_func=get_remote_address)
 
-_email_failures: dict[str, list[float]] = defaultdict(list)
+# In-memory per-worker failure tracker.
+# Note: Failure tracking is in-memory per worker process. In multi-worker deployments,
+# a shared store (e.g., Redis) would be required for global synchronization.
+_email_failures: OrderedDict[str, list[float]] = OrderedDict()
 _email_failures_lock = threading.Lock()
 MAX_EMAIL_LOGIN_FAILURES = 5
 EMAIL_FAILURE_WINDOW_SECONDS = 60.0
+MAX_EMAIL_FAILURE_ENTRIES = 10000
 SYSTEM_USER_EMAIL = "system@securevault.internal"
+SYSTEM_USER_PASSWORD_SENTINEL = "!"
 
 
 def get_or_create_system_user(db: Session) -> User:
@@ -65,7 +70,7 @@ def get_or_create_system_user(db: Session) -> User:
     if system_user is None:
         system_user = User(
             email=SYSTEM_USER_EMAIL,
-            hashed_password="!",
+            hashed_password=SYSTEM_USER_PASSWORD_SENTINEL,
             token_version=0,
         )
         db.add(system_user)
@@ -74,17 +79,32 @@ def get_or_create_system_user(db: Session) -> User:
         except IntegrityError:
             db.rollback()
             system_user = db.query(User).filter(User.email == SYSTEM_USER_EMAIL).first()
-    if system_user is None:
-        raise RuntimeError("Failed to initialize or resolve system user")
+    if system_user is None or system_user.hashed_password != SYSTEM_USER_PASSWORD_SENTINEL:
+        raise RuntimeError("System user account is invalid or compromised")
     return system_user
+
+
+def _prune_expired_failures_locked(now: float) -> None:
+    expired_keys = []
+    for k, timestamps in _email_failures.items():
+        valid = [t for t in timestamps if now - t < EMAIL_FAILURE_WINDOW_SECONDS]
+        if valid:
+            _email_failures[k] = valid
+        else:
+            expired_keys.append(k)
+    for k in expired_keys:
+        _email_failures.pop(k, None)
 
 
 def check_email_failure_limit(email: str) -> None:
     now = time.monotonic()
     key = email.strip().lower()
     with _email_failures_lock:
-        timestamps = [t for t in _email_failures[key] if now - t < EMAIL_FAILURE_WINDOW_SECONDS]
-        _email_failures[key] = timestamps
+        timestamps = [t for t in _email_failures.get(key, []) if now - t < EMAIL_FAILURE_WINDOW_SECONDS]
+        if timestamps:
+            _email_failures[key] = timestamps
+        else:
+            _email_failures.pop(key, None)
         if len(timestamps) >= MAX_EMAIL_LOGIN_FAILURES:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -96,9 +116,13 @@ def record_email_login_failure(email: str) -> None:
     now = time.monotonic()
     key = email.strip().lower()
     with _email_failures_lock:
-        timestamps = [t for t in _email_failures[key] if now - t < EMAIL_FAILURE_WINDOW_SECONDS]
+        _prune_expired_failures_locked(now)
+        timestamps = [t for t in _email_failures.get(key, []) if now - t < EMAIL_FAILURE_WINDOW_SECONDS]
         timestamps.append(now)
         _email_failures[key] = timestamps
+        _email_failures.move_to_end(key)
+        while len(_email_failures) > MAX_EMAIL_FAILURE_ENTRIES:
+            _email_failures.popitem(last=False)
 
 
 def reset_email_login_failures(email: str) -> None:

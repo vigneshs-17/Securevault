@@ -478,3 +478,86 @@ def test_password_minimum_length_schema_validation(access_token):
         json={"current_password": TEST_PASSWORD, "new_password": "short"},
     )
     assert change_resp.status_code == 422
+
+
+def test_reserved_domain_registration_rejected():
+    # Registration of system user or any @securevault.internal address is rejected
+    for email in ("system@securevault.internal", "attacker@securevault.internal", "sub@corp.securevault.internal"):
+        resp = client.post("/auth/register", json={"email": email, "password": "StrongPassword123!"})
+        assert resp.status_code == 422, f"Expected 422 for {email}, got {resp.status_code}"
+
+
+def test_system_user_compromise_rejected():
+    import pytest
+    from app.api.auth import SYSTEM_USER_EMAIL, get_or_create_system_user
+    from app.core.security import hash_password
+    from app.db.database import SessionLocal
+    from app.models.user import User
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email == SYSTEM_USER_EMAIL).first()
+        if user:
+            original_hash = user.hashed_password
+            user.hashed_password = hash_password("AttackerPassword123!")
+            db.commit()
+            try:
+                with pytest.raises(RuntimeError, match="System user account is invalid or compromised"):
+                    get_or_create_system_user(db)
+            finally:
+                user.hashed_password = original_hash
+                db.commit()
+
+
+def test_system_user_login_returns_401_not_500():
+    from app.api.auth import SYSTEM_USER_EMAIL
+    from app.core.security import verify_password
+
+    # verify_password on "!" returns False without raising UnknownHashError
+    assert verify_password("AttemptedPassword123!", "!") is False
+
+    # Login attempt for system user returns 401 with standard error message
+    resp = client.post(
+        "/auth/login",
+        json={"email": SYSTEM_USER_EMAIL, "password": "AttemptedPassword123!"},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Invalid email or password"
+
+
+def test_email_failures_pruning_and_capacity_cap(monkeypatch):
+    import time
+    from app.api.auth import (
+        _email_failures,
+        _email_failures_lock,
+        record_email_login_failure,
+        reset_all_email_login_failures,
+    )
+
+    reset_all_email_login_failures()
+
+    # 1. Test pruning of expired entries
+    now = time.monotonic()
+    with _email_failures_lock:
+        _email_failures["stale@example.com"] = [now - 120.0]
+
+    record_email_login_failure("fresh@example.com")
+    with _email_failures_lock:
+        assert "stale@example.com" not in _email_failures
+        assert "fresh@example.com" in _email_failures
+
+    # 2. Test capping total keys and oldest eviction
+    reset_all_email_login_failures()
+    import app.api.auth as auth_mod
+    monkeypatch.setattr(auth_mod, "MAX_EMAIL_FAILURE_ENTRIES", 3)
+
+    for i in range(1, 5):
+        record_email_login_failure(f"user{i}@example.com")
+
+    with _email_failures_lock:
+        assert len(_email_failures) == 3
+        assert "user1@example.com" not in _email_failures
+        assert "user2@example.com" in _email_failures
+        assert "user3@example.com" in _email_failures
+        assert "user4@example.com" in _email_failures
+
+    reset_all_email_login_failures()
