@@ -32,4 +32,4 @@ typing_extensions==4.16.0
 tzdata==2026.3
 uvicorn==0.54.0
 watchfiles==1.2.0
-websockets==17.1
+websockets==17.4
