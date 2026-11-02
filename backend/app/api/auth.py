@@ -172,6 +172,29 @@ def refresh_access_token(
     )
 
     if (
+        refresh_session is not None
+        and refresh_session.user_id == user.id
+        and refresh_session.revoked_at is not None
+    ):
+        revoke_all_user_refresh_sessions(
+            db=db,
+            user_id=user.id,
+        )
+        user.token_version += 1
+        db.flush()
+        create_audit_log(
+            db=db,
+            user_id=user.id,
+            action="REFRESH_TOKEN_REUSE_DETECTED",
+            resource_type="AUTH",
+            resource_id=user.id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or revoked refresh token",
+        )
+
+    if (
         refresh_session is None
         or refresh_session.user_id != user.id
         or not is_refresh_session_valid(refresh_session)
