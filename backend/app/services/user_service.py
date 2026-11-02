@@ -42,10 +42,28 @@ def validate_password(password: str) -> None:
         )
 
 
+RESERVED_DOMAIN = "securevault.internal"
+RESERVED_EMAIL_SUFFIX = f"@{RESERVED_DOMAIN}"
+
+
+def validate_email_not_reserved(email: str) -> None:
+    normalized = email.strip().lower()
+    if (
+        normalized == f"system@{RESERVED_DOMAIN}"
+        or normalized.endswith(RESERVED_EMAIL_SUFFIX)
+        or normalized.endswith(f".{RESERVED_DOMAIN}")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid email address",
+        )
+
+
 def create_user(
     db: Session,
     user_data: UserCreate,
 ) -> User:
+    validate_email_not_reserved(user_data.email)
     existing_user = db.scalar(
         select(User).where(User.email == user_data.email)
     )

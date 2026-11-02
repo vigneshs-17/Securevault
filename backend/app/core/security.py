@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import jwt
 from pwdlib import PasswordHash
+from pwdlib.exceptions import UnknownHashError
 
 from app.core.config import settings
 
@@ -22,10 +23,14 @@ def verify_password(
     password: str,
     hashed_password: str,
 ) -> bool:
-    return password_hash.verify(
-        password,
-        hashed_password,
-    )
+    try:
+        return password_hash.verify(
+            password,
+            hashed_password,
+        )
+    except UnknownHashError:
+        password_hash.verify(password, DUMMY_HASH)
+        return False
 
 
 def create_access_token(

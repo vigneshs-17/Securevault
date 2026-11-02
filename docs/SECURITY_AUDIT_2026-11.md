@@ -257,13 +257,13 @@ Every route across the SecureVault application was audited for Broken Object Lev
 | Finding 2 | Denial of Service in dnspython (CVE-2026-114605) | High | **Fixed in PR #2** |
 | Finding 3 | Lack of Application-Level Encryption Key Rotation | Medium | **Known limitation** |
 | Finding 4 | Absence of Hard Account Lockout Policy | Medium | **Accepted (Deliberate Decision)** |
-| Finding 5 | Purely IP-Based Rate Limiting on Authentication | Medium | **Fixed in PR #4** |
+| Finding 5 | Purely IP-Based Rate Limiting on Authentication | Medium | **Fixed in PR #4; hardened in PR #17** |
 | Finding 6 | Server-Side Shared Key Architecture vs Zero-Knowledge | Medium | **Known limitation** |
 | Finding 7 | Global Information Disclosure via /audit/verify | Low | **Fixed in PR #4** |
 | Finding 8 | Access Token Valid Until Expiry After Single Logout | Low | **Known limitation** |
 | Finding 9 | Container Base Images Use Mutable Floating Tags | Low | **Known limitation** |
 | Finding 10 | Permissive `--forwarded-allow-ips "*"` on Production Uvicorn | Low | **Fixed in PR #4** |
-| Finding 11 | Asymmetric Audit Logging on Failed Logins for Unknown Users | Low | **Fixed in PR #4** |
+| Finding 11 | Asymmetric Audit Logging on Failed Logins for Unknown Users | Low | **Fixed in PR #4; hardened in PR #17** |
 | Finding 12 | Schema `Password` Length Discrepancy with Service Validator | Info | **Fixed in PR #4** |
 
 ---
@@ -373,6 +373,8 @@ Every route across the SecureVault application was audited for Broken Object Lev
   2. Username/Email-level throttling (e.g., 5 attempts per email per 15 minutes) regardless of source IP.
 - **How to Test:**
   Simulate 6 login attempts with the same email address using distinct client IP addresses (or mocking `get_remote_address`). Verify that the 6th attempt is throttled.
+- **Follow-up Hardening (PR #17):**
+  Addressed memory leak concern where `_email_failures` grew indefinitely with unseen email addresses. Implemented active pruning of expired timestamps on every write, capped cache capacity to 10,000 keys with LRU eviction of oldest entries, and documented in-memory per-worker boundary in README.
 
 ---
 
@@ -476,6 +478,10 @@ Every route across the SecureVault application was audited for Broken Object Lev
   Record failed login attempts for non-existent users in the audit log (e.g. setting `user_id=None` or using a dedicated security event log table).
 - **How to Test:**
   Submit a failed login with a non-existent email; query audit logs to ensure an authentication failure record was generated.
+- **Follow-up Hardening (PR #17):**
+  1. Prevented registration of the reserved address `system@securevault.internal` and domain `@securevault.internal` with a 422 validation error in Pydantic schema and service layer.
+  2. Guarded `get_or_create_system_user()` to verify the system user row carries the sentinel password (`"!"`) and refuses to bind to pre-existing normal user accounts.
+  3. Hardened `verify_password()` against `pwdlib.exceptions.UnknownHashError` on sentinel hashes (`"!"`) to return standard 401 Unauthorized via constant-time dummy hash verification instead of throwing HTTP 500.
 
 ---
 
