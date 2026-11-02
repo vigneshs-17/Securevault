@@ -1,8 +1,12 @@
+from collections import defaultdict
 from datetime import datetime, timezone
+import threading
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import jwt
@@ -49,6 +53,64 @@ router = APIRouter(
 
 limiter = Limiter(key_func=get_remote_address)
 
+_email_failures: dict[str, list[float]] = defaultdict(list)
+_email_failures_lock = threading.Lock()
+MAX_EMAIL_LOGIN_FAILURES = 5
+EMAIL_FAILURE_WINDOW_SECONDS = 60.0
+SYSTEM_USER_EMAIL = "system@securevault.internal"
+
+
+def get_or_create_system_user(db: Session) -> User:
+    system_user = db.query(User).filter(User.email == SYSTEM_USER_EMAIL).first()
+    if system_user is None:
+        system_user = User(
+            email=SYSTEM_USER_EMAIL,
+            hashed_password="!",
+            token_version=0,
+        )
+        db.add(system_user)
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            system_user = db.query(User).filter(User.email == SYSTEM_USER_EMAIL).first()
+    if system_user is None:
+        raise RuntimeError("Failed to initialize or resolve system user")
+    return system_user
+
+
+def check_email_failure_limit(email: str) -> None:
+    now = time.monotonic()
+    key = email.strip().lower()
+    with _email_failures_lock:
+        timestamps = [t for t in _email_failures[key] if now - t < EMAIL_FAILURE_WINDOW_SECONDS]
+        _email_failures[key] = timestamps
+        if len(timestamps) >= MAX_EMAIL_LOGIN_FAILURES:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded: 5 per 1 minute",
+            )
+
+
+def record_email_login_failure(email: str) -> None:
+    now = time.monotonic()
+    key = email.strip().lower()
+    with _email_failures_lock:
+        timestamps = [t for t in _email_failures[key] if now - t < EMAIL_FAILURE_WINDOW_SECONDS]
+        timestamps.append(now)
+        _email_failures[key] = timestamps
+
+
+def reset_email_login_failures(email: str) -> None:
+    key = email.strip().lower()
+    with _email_failures_lock:
+        _email_failures.pop(key, None)
+
+
+def reset_all_email_login_failures() -> None:
+    with _email_failures_lock:
+        _email_failures.clear()
+
 
 @router.post("/register", response_model=UserResponse)
 @limiter.limit("20/minute")
@@ -67,10 +129,21 @@ def login_user(
     user_data: UserLogin,
     db: Session = Depends(get_db),
 ):
+    check_email_failure_limit(user_data.email)
+
     user = get_user_by_email(db, user_data.email, for_update=True)
 
     if user is None:
+        record_email_login_failure(user_data.email)
         verify_password(user_data.password, DUMMY_HASH)
+        system_user = get_or_create_system_user(db)
+        create_audit_log(
+            db=db,
+            user_id=system_user.id,
+            action="LOGIN_FAILED",
+            resource_type="AUTH",
+            resource_id=None,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -80,6 +153,7 @@ def login_user(
         user_data.password,
         user.hashed_password,
     ):
+        record_email_login_failure(user_data.email)
         create_audit_log(
             db=db,
             user_id=user.id,
@@ -92,6 +166,8 @@ def login_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+    reset_email_login_failures(user_data.email)
 
     access_token = create_access_token(
         user_id=user.id,

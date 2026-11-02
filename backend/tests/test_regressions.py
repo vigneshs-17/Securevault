@@ -1,3 +1,4 @@
+from pathlib import Path
 import os
 import subprocess
 import sys
@@ -130,3 +131,11 @@ def test_oversized_passwords_are_rejected_before_hashing():
         ("/auth/login", {"email": "big@example.com", "password": huge}),
     ):
         assert client.post(path, json=body).status_code == 422
+
+
+def test_production_forwarded_allow_ips_restricted():
+    compose_path = Path(__file__).resolve().parents[2] / "compose.prod.yaml"
+    content = compose_path.read_text(encoding="utf-8")
+    assert "--forwarded-allow-ips" in content
+    assert '"*"' not in content.split("--forwarded-allow-ips")[1].split("]")[0]
+    assert "proxy" in content.split("--forwarded-allow-ips")[1].split("]")[0]

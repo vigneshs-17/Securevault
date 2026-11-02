@@ -48,8 +48,37 @@ def test_audit_chain_verification(access_token):
 
     assert data["valid"] is True
     assert data["message"] == "Audit chain integrity verified"
-    assert data["total_logs"] >= 1
+    assert "total_logs" not in data
+    assert "legacy_logs" not in data
     assert data["verified_logs"] >= 1
+
+
+def test_audit_verify_scoped_to_caller_without_global_totals(access_token):
+    # User A creates a vault item
+    headers_a = {"Authorization": f"Bearer {access_token}"}
+    client.post("/vault/items", headers=headers_a, json={
+        "title": "Caller Verify Isolation",
+        "username": "caller-a",
+        "password": "CallerPassword123!",
+    })
+
+    # User B logs in
+    login_b = client.post("/auth/login", json={"email": USER_B_EMAIL, "password": USER_B_PASSWORD})
+    assert login_b.status_code == 200
+    headers_b = {"Authorization": f"Bearer {login_b.json()['access_token']}"}
+
+    # User B verifies audit
+    resp_b = client.get("/audit/verify", headers=headers_b)
+    assert resp_b.status_code == 200
+    data_b = resp_b.json()
+
+    assert data_b["valid"] is True
+    assert "total_logs" not in data_b
+    assert "legacy_logs" not in data_b
+    # User B only sees User B's verified logs (login success etc.), not User A's logs
+    resp_a = client.get("/audit/verify", headers=headers_a)
+    data_a = resp_a.json()
+    assert data_a["verified_logs"] != data_b["verified_logs"]
 
 
 def test_audit_tampering_is_detected(access_token):
