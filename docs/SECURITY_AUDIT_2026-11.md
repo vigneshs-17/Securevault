@@ -249,7 +249,25 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 ---
 
-## 5. Security Findings (by Severity)
+## 5. Security Findings & Remediation Status
+
+| Finding | Summary | Severity | Remediation Status |
+|---|---|---|---|
+| Finding 1 | Refresh Token Reuse Detection Not Implemented | High | **Fixed in PR #3** |
+| Finding 2 | Denial of Service in dnspython (CVE-2026-114605) | High | **Fixed in PR #2** |
+| Finding 3 | Lack of Application-Level Encryption Key Rotation | Medium | **Known limitation** |
+| Finding 4 | Absence of Hard Account Lockout Policy | Medium | **Accepted (Deliberate Decision)** |
+| Finding 5 | Purely IP-Based Rate Limiting on Authentication | Medium | **Fixed in PR #4** |
+| Finding 6 | Server-Side Shared Key Architecture vs Zero-Knowledge | Medium | **Known limitation** |
+| Finding 7 | Global Information Disclosure via /audit/verify | Low | **Fixed in PR #4** |
+| Finding 8 | Access Token Valid Until Expiry After Single Logout | Low | **Known limitation** |
+| Finding 9 | Container Base Images Use Mutable Floating Tags | Low | **Known limitation** |
+| Finding 10 | Permissive `--forwarded-allow-ips "*"` on Production Uvicorn | Low | **Fixed in PR #4** |
+| Finding 11 | Asymmetric Audit Logging on Failed Logins for Unknown Users | Low | **Fixed in PR #4** |
+| Finding 12 | Schema `Password` Length Discrepancy with Service Validator | Info | **Fixed in PR #4** |
+
+---
+
 
 ### [CRITICAL] None Identified
 
@@ -259,6 +277,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/app/api/auth.py:169-183`
 - **Severity:** High
+- **Status:** Fixed in PR #3
 - **Exploit Scenario:**
   OAuth 2.0 Threat Model (RFC 6819 Section 5.2.2.3) requires that when a refresh token is rotated, presenting a previously used (revoked) refresh token must be treated as an active breach (token replay). In SecureVault, when an already-revoked refresh token is replayed:
   ```python
@@ -288,6 +307,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/requirements.txt:10`
 - **Severity:** High
+- **Status:** Fixed in PR #2
 - **Exploit Scenario:**
   `pip-audit` identified a known vulnerability in `dnspython==2.8.0`:
   - **Vulnerability ID:** CVE-2026-114605 (GHSA-45c3-73f7-pv4m)
@@ -308,6 +328,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/app/services/vault_crypto.py:6-17`
 - **Severity:** Medium
+- **Status:** Known limitation
 - **Exploit Scenario:**
   Vault secrets (`password`, `notes`) are encrypted using a single static key: `Fernet(settings.vault_encryption_key.encode())`. There is no mechanism to rotate the encryption key. If `VAULT_ENCRYPTION_KEY` is modified or rotated (e.g. following regulatory compliance cycles or employee offboarding), all existing encrypted rows in `vault_items` will fail decryption with `cryptography.fernet.InvalidToken`, causing permanent data loss or denial of access to stored passwords.
 - **Fix:**
@@ -321,6 +342,9 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/app/models/user.py:7-28`, `backend/app/api/auth.py:63-95`
 - **Severity:** Medium
+- **Status:** Accepted (Deliberate Architectural Decision)
+- **Deliberate Design Decision:**
+  Hard account lockout (e.g. permanently locking an account after 5 failed attempts) was deliberately evaluated and rejected. Hard lockout policies introduce an easy denial-of-service vector: an unauthenticated attacker can intentionally lock out arbitrary users simply by spamming failed logins with their email address. Instead, this risk was mitigated in PR #4 by implementing dual-key rate limiting (per-IP and per-email) that temporarily rate-limits authentication attempts without permanently locking out victims.
 - **Exploit Scenario:**
   The `User` entity lacks `failed_login_attempts` counters and `locked_until` timestamps. Repeated invalid login attempts against an account are logged as `LOGIN_FAILED` in the audit log, but no account-level backoff or lockout occurs. An attacker distributing requests across multiple IP addresses or rotating residential proxies can execute sustained brute-force or dictionary attacks against specific target user accounts without triggering the IP-based rate limiter.
 - **Fix:**
@@ -338,6 +362,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/app/api/auth.py:50, 64`
 - **Severity:** Medium
+- **Status:** Fixed in PR #4 (Dual-key per-IP + per-email rate limiting on login failures)
 - **Exploit Scenario:**
   Rate limiting is configured with `limiter = Limiter(key_func=get_remote_address)`.
   - In a credential stuffing attack, attackers route traffic through large proxy networks (residential proxy pools), distributing requests so no single IP exceeds 5 requests per minute, successfully bypassing the rate limit.
@@ -355,6 +380,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/app/services/vault_crypto.py:1-17`, `compose.prod.yaml:12`
 - **Severity:** Medium (Architectural)
+- **Status:** Known limitation
 - **Exploit Scenario:**
   The server holds the master decryption key `VAULT_ENCRYPTION_KEY` in environment memory. All users' secrets are encrypted with this identical server-side key. If an adversary gains unauthorized read access to the database (SQL injection, database backup compromise) and server environment variables (container inspection, host compromise, memory dump), all passwords and private notes for all users can be decrypted offline simultaneously.
 - **Fix:**
@@ -371,6 +397,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/app/api/audit.py:31-36`, `backend/app/services/audit_service.py:74-150`
 - **Severity:** Low / Info
+- **Status:** Fixed in PR #4 (Scoped `/audit/verify` exclusively to caller logs, removed global totals)
 - **Exploit Scenario:**
   Any authenticated regular user can call `GET /audit/verify`. The endpoint returns:
   ```json
@@ -394,6 +421,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/app/api/auth.py:222-291`
 - **Severity:** Low
+- **Status:** Known limitation
 - **Exploit Scenario:**
   When a user logs out via `/auth/logout`, only the specific `RefreshSession` is marked revoked in the database. The `current_user.token_version` is **not** incremented (in contrast to `/auth/logout-all`). Because access tokens are stateless JWTs with a 15-minute lifetime, an access token copied before logout remains valid to make API requests for up to 15 minutes after the user believes they have logged out.
 - **Fix:**
@@ -407,6 +435,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/Dockerfile:1`, `frontend/Dockerfile:1`, `compose.prod.yaml:25, 71`
 - **Severity:** Low / Info
+- **Status:** Known limitation
 - **Exploit Scenario:**
   `backend/Dockerfile` specifies `FROM python:3.12-slim`, and `frontend/Dockerfile` specifies `FROM node:22-alpine`. Similarly, `compose.prod.yaml` uses `postgres:18` and `caddy:2-alpine`. These tags are mutable floating tags. An upstream image build or compromised upstream tag on Docker Hub can introduce breaking changes or untracked vulnerabilities into production environments upon rebuild.
 - **Fix:**
@@ -424,6 +453,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `compose.prod.yaml:54`
 - **Severity:** Low
+- **Status:** Fixed in PR #4 (Restricted to `proxy` container)
 - **Exploit Scenario:**
   In `compose.prod.yaml`, uvicorn is launched with:
   `command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]`
@@ -439,6 +469,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/app/api/auth.py:70-95`
 - **Severity:** Low
+- **Status:** Fixed in PR #4 (Audit-logging failed logins for unknown accounts without storing password)
 - **Exploit Scenario:**
   In `/auth/login`, when an email exists and the password fails, `create_audit_log` records `LOGIN_FAILED`. When an email does not exist, `verify_password(..., DUMMY_HASH)` is called, but no audit log entry is written. Consequently, brute-force username discovery or dictionary attacks targeting non-existent or administrative accounts (`admin@example.com`, `root@example.com`) leave zero trail in the audit database for security monitoring tools (SIEM).
 - **Fix:**
@@ -452,6 +483,7 @@ Every route across the SecureVault application was audited for Broken Object Lev
 
 - **File:Line:** `backend/app/schemas/user.py:4`, `backend/app/services/user_service.py:14`
 - **Severity:** Info
+- **Status:** Fixed in PR #4 (`UserCreate` and `ChangePasswordRequest` enforce `Field(min_length=12, max_length=128)`)
 - **Exploit Scenario:**
   `backend/app/schemas/user.py` defines `Password = Field(min_length=1, max_length=128)` used by `UserCreate` and `ChangePasswordRequest`. However, `user_service.py` rejects passwords with length `< 12` with HTTP 400. This causes FastAPI's auto-generated OpenAPI documentation to state that 1-character passwords are accepted by the schema, leading to API documentation discrepancy.
 - **Fix:**
