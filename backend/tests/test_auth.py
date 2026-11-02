@@ -427,3 +427,54 @@ def test_password_change_revokes_existing_access_token():
 
     assert me_response.status_code == 200
     assert me_response.json()["email"] == email
+
+def test_login_failure_rate_limit_per_email():
+    from app.api.auth import limiter as auth_limiter
+    target_email = "rate_limit_target@securevault.com"
+    client.post("/auth/register", json={"email": target_email, "password": "StrongPassword123!"})
+
+    # 5 failed attempts return 401; reset IP limiter after each to ensure per-email limit is what triggers
+    for _ in range(5):
+        resp = client.post("/auth/login", json={"email": target_email, "password": "WrongPassword123!"})
+        assert resp.status_code == 401
+        auth_limiter.reset()
+
+    # 6th attempt returns 429 via per-email failure limit
+    limited_resp = client.post("/auth/login", json={"email": target_email, "password": "WrongPassword123!"})
+    assert limited_resp.status_code == 429
+    message = limited_resp.json().get("detail") or limited_resp.json().get("error")
+    assert "Rate limit exceeded" in message
+
+
+def test_unknown_account_failed_login_is_audit_logged():
+    from app.db.database import SessionLocal
+    from app.models.audit_log import AuditLog
+
+    secret_attempt = "SecretNotStored123!"
+    resp = client.post("/auth/login", json={"email": "ghost@securevault.com", "password": secret_attempt})
+    assert resp.status_code == 401
+
+    with SessionLocal() as db:
+        latest_log = db.query(AuditLog).order_by(AuditLog.id.desc()).first()
+        assert latest_log is not None
+        assert latest_log.action == "LOGIN_FAILED"
+        assert latest_log.resource_type == "AUTH"
+        # Verify the submitted password was NOT stored
+        for col in ("action", "resource_type", "previous_hash", "integrity_hash"):
+            val = getattr(latest_log, col, "")
+            assert secret_attempt not in str(val)
+
+
+def test_password_minimum_length_schema_validation(access_token):
+    # Registration with password < 12 characters is rejected at schema level (422)
+    resp = client.post("/auth/register", json={"email": "short@example.com", "password": "short"})
+    assert resp.status_code == 422
+
+    # Password change with new_password < 12 characters is rejected at schema level (422)
+    headers = {"Authorization": f"Bearer {access_token}"}
+    change_resp = client.post(
+        "/auth/change-password",
+        headers=headers,
+        json={"current_password": TEST_PASSWORD, "new_password": "short"},
+    )
+    assert change_resp.status_code == 422

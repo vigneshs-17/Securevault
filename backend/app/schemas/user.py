@@ -2,11 +2,12 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 # Bound input so hashing cannot be used for CPU exhaustion.
 Password = Field(min_length=1, max_length=128)
+AccountPassword = Field(min_length=12, max_length=128)
 
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Password
+    password: str = AccountPassword
 
 
 class UserLogin(BaseModel):
@@ -33,4 +34,4 @@ class RefreshTokenRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Password
-    new_password: str = Password
+    new_password: str = AccountPassword

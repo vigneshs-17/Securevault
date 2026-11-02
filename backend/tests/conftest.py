@@ -58,7 +58,7 @@ os.environ.update({
     "REFRESH_TOKEN_EXPIRE_DAYS": "7",
 })
 
-from app.api.auth import limiter as auth_limiter  # noqa: E402
+from app.api.auth import limiter as auth_limiter, reset_all_email_login_failures  # noqa: E402
 from app.main import app  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.database import engine  # noqa: E402
@@ -84,11 +84,13 @@ def isolated_database():
         response = client.post("/auth/register", json={"email": email, "password": password})
         assert response.status_code == 200
     auth_limiter.reset()
+    reset_all_email_login_failures()
     yield
     Base.metadata.drop_all(engine)
     with engine.begin() as connection:
         connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
     auth_limiter.reset()
+    reset_all_email_login_failures()
 
 
 def pytest_sessionfinish(session, exitstatus):

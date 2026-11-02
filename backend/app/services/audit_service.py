@@ -73,6 +73,7 @@ def get_user_audit_logs(
 
 def verify_audit_chain(
     db: Session,
+    user_id: int | None = None,
 ) -> dict:
     logs = (
         db.query(AuditLog)
@@ -97,9 +98,7 @@ def verify_audit_chain(
     if not integrity_logs:
         return {
             "valid": True,
-            "total_logs": len(logs),
             "verified_logs": 0,
-            "legacy_logs": len(logs),
             "message": "No integrity-enabled audit logs found",
         }
 
@@ -141,10 +140,14 @@ def verify_audit_chain(
 
         previous_hash = log.integrity_hash
 
+    caller_verified_logs = (
+        len([log for log in integrity_logs if log.user_id == user_id])
+        if user_id is not None
+        else len(integrity_logs)
+    )
+
     return {
         "valid": True,
-        "total_logs": len(logs),
-        "verified_logs": len(integrity_logs),
-        "legacy_logs": len(logs) - len(integrity_logs),
+        "verified_logs": caller_verified_logs,
         "message": "Audit chain integrity verified",
     }
