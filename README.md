@@ -643,7 +643,7 @@ In line with the project's security architecture and audit findings, the followi
 - **Single server-side encryption key & no key rotation yet (Finding 3):** All vault entries are encrypted using a single environment-configured Fernet key (`VAULT_ENCRYPTION_KEY`). `MultiFernet` key rotation and automated database re-encryption migrations are not currently implemented.
 - **Not zero-knowledge (Finding 6):** SecureVault is a server-side encrypted secrets manager, not an end-to-end zero-knowledge system; the server holds the decryption key during runtime operations.
 - **Access token valid ≤15 min after single-session logout (Finding 8):** Single-device logout (`/auth/logout`) revokes the refresh session in the database, but stateless JWT access tokens remain valid until their 15-minute expiration window unless a global sign-out (`/auth/logout-all`) is performed.
-- **Container base images not digest-pinned (Finding 9):** `backend/Dockerfile` and `frontend/Dockerfile` use floating minor/major tags (`python:3.12-slim`, `node:22-alpine`) rather than immutable SHA256 digests.
+- **Container base images not digest-pinned (Finding 9):** `backend/Dockerfile` and `frontend/Dockerfile` use floating minor/major tags (`python:3.12-slim`, `node:26-alpine`) rather than immutable SHA256 digests.
 - **Per-email login rate limiting is in-memory per worker process:** Failed login tracking per email address is maintained in process memory rather than in a distributed cache (e.g., Redis). Under multi-worker deployments, failure thresholds apply per worker process rather than globally.
 
 ---

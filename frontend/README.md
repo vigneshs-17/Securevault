@@ -5,7 +5,7 @@ Lucide icons, accessible dialogs and reduced-motion support. No runtime package 
 
 ## Run locally
 
-Start the Docker backend using DOCKER.md. With Node 22 or later, run
+Start the Docker backend using DOCKER.md. With Node 26 or later, run
 `node frontend/server.mjs` from the project root, then visit http://127.0.0.1:3000.
 Run `node --test frontend/tests/*.test.mjs` for client tests.
 The server binds to loopback and serves only an explicit asset allowlist.
